@@ -4,3 +4,6 @@
 *.ko
 Module.symvers
 modules.order
+
+# test program
+test_proc
