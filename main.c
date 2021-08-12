@@ -63,7 +63,6 @@ static int hook_install(struct ftrace_hook *hook)
     return 0;
 }
 
-#if 0
 void hook_remove(struct ftrace_hook *hook)
 {
     int err = unregister_ftrace_function(&hook->ops);
@@ -73,7 +72,6 @@ void hook_remove(struct ftrace_hook *hook)
     if (err)
         printk("ftrace_set_filter_ip() failed: %d\n", err);
 }
-#endif
 
 typedef struct {
     pid_t id;
@@ -212,10 +210,11 @@ static const struct file_operations fops = {
 #define MINOR_VERSION 1
 #define DEVICE_NAME "hideproc"
 
+static dev_t dev;
+
 static int _hideproc_init(void)
 {
     int err, dev_major;
-    dev_t dev;
     printk(KERN_INFO "@ %s\n", __func__);
     err = alloc_chrdev_region(&dev, 0, MINOR_VERSION, DEVICE_NAME);
     dev_major = MAJOR(dev);
@@ -235,7 +234,21 @@ static int _hideproc_init(void)
 static void _hideproc_exit(void)
 {
     printk(KERN_INFO "@ %s\n", __func__);
-    /* FIXME: ensure the release of all allocated resources */
+
+    /* Destroy the hidden list */
+    pid_node_t *proc, *tmp_proc;
+    list_for_each_entry_safe(proc, tmp_proc, &hidden_proc, list_node)
+    {
+        list_del(&proc->list_node);
+        kfree(proc);
+    }
+
+    /* Unregister the device */
+    device_destroy(hideproc_class, MKDEV(MAJOR(dev), MINOR_VERSION));
+    cdev_del(&cdev);
+    class_destroy(hideproc_class);
+    unregister_chrdev_region(MKDEV(dev, MINOR_VERSION), MINOR_VERSION);
+    hook_remove(&hook);
 }
 
 module_init(_hideproc_init);
