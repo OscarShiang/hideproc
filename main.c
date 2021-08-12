@@ -172,12 +172,14 @@ static ssize_t device_read(struct file *filep,
     return *offset;
 }
 
+enum OPERATION { ADD, DEL, UNKNOW };
+
 static ssize_t device_write(struct file *filep,
                             const char *buffer,
                             size_t len,
                             loff_t *offset)
 {
-    int ret;
+    int ret, oper;
     long pid;
     char *message;
 
@@ -188,19 +190,39 @@ static ssize_t device_write(struct file *filep,
     message = kmalloc(len + 1, GFP_KERNEL);
     memset(message, 0, len + 1);
     copy_from_user(message, buffer, len);
-    if (!memcmp(message, add_message, sizeof(add_message) - 1)) {
-	ret = kstrtol(message + sizeof(add_message), 10, &pid);
-	if (!ret)
-	    hide_process(pid);
-	else
-	    return ret;
-    } else if (!memcmp(message, del_message, sizeof(del_message) - 1)) {
-        ret = kstrtol(message + sizeof(del_message), 10, &pid);
-        if (!ret)
-	    unhide_process(pid);
-	else
-	    return ret;
-    } else {
+
+    /* Parse the operation */
+    if (!memcmp(message, add_message, sizeof(add_message) - 1))
+        oper = ADD;
+    else if (!memcmp(message, del_message, sizeof(del_message) - 1))
+        oper = DEL;
+    else
+        oper = UNKNOW;
+
+    /* Parse the value */
+    if (oper >= ADD && oper <= DEL) {
+        /* Since "add" and "del" have a same size, we don't need to seperate
+         * these two cases */
+        ret = kstrtol(message + sizeof(add_message), 10, &pid);
+        if (ret) {
+            kfree(message);
+            return ret;
+        }
+    }
+
+    /* Do the given operation */
+    switch (oper) {
+    case ADD:
+        ret = hide_process(pid);
+        if (ret != SUCCESS) {
+            kfree(message);
+            return ret;
+        }
+        break;
+    case DEL:
+        unhide_process(pid);
+        break;
+    case UNKNOW:
         kfree(message);
         return -EAGAIN;
     }
